@@ -1,0 +1,7 @@
+[2026-04-20 10:10:21] CRITICAL ip=::1: SQLSTATE[HY000] [1049] Unknown database 'itapp' in C:\laragon\www\itapp\config\database.php:20
+[2026-04-20 09:45:24] INFO     ip=::1 user=1: Login successful {"user_id":1,"role":"admin"}
+[2026-04-20 11:44:45] CRITICAL ip=::1: Function strftime() is deprecated in C:\laragon\www\itapp\views\dashboard\index.php:14
+[2026-04-20 11:45:01] CRITICAL ip=::1: Function strftime() is deprecated in C:\laragon\www\itapp\views\dashboard\index.php:14
+[2026-04-20 11:50:07] CRITICAL ip=::1: Function strftime() is deprecated in C:\laragon\www\itapp\views\dashboard\index.php:14
+[2026-04-20 11:50:20] CRITICAL ip=::1: Function strftime() is deprecated in C:\laragon\www\itapp\views\dashboard\index.php:14
+[2026-04-20 14:15:27] CRITICAL ip=::1: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'itapp.areas' doesn't exist in C:\laragon\www\itapp\app\models\Collaborator.php:28
