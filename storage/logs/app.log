@@ -5,3 +5,13 @@
 [2026-04-20 11:50:07] CRITICAL ip=::1: Function strftime() is deprecated in C:\laragon\www\itapp\views\dashboard\index.php:14
 [2026-04-20 11:50:20] CRITICAL ip=::1: Function strftime() is deprecated in C:\laragon\www\itapp\views\dashboard\index.php:14
 [2026-04-20 14:15:27] CRITICAL ip=::1: SQLSTATE[42S02]: Base table or view not found: 1146 Table 'itapp.areas' doesn't exist in C:\laragon\www\itapp\app\models\Collaborator.php:28
+[2026-04-21 07:36:39] INFO     ip=::1: Logout {"user_id":1}
+[2026-04-21 07:36:53] INFO     ip=::1 user=2: Login successful {"user_id":2,"role":"consultant"}
+[2026-04-21 07:37:25] INFO     ip=::1: Logout {"user_id":2}
+[2026-04-21 07:37:39] WARNING  ip=::1: Failed login — wrong password {"user_id":1}
+[2026-04-21 07:37:47] WARNING  ip=::1: Failed login — wrong password {"user_id":1}
+[2026-04-21 07:37:47] WARNING  ip=::1: CSRF token mismatch {"uri":"/itapp/public/login","method":"POST"}
+[2026-04-21 07:38:18] INFO     ip=::1 user=1: Login successful {"user_id":1,"role":"admin"}
+[2026-04-21 08:23:49] INFO     ip=::1: Logout {"user_id":1}
+[2026-04-21 08:23:58] INFO     ip=::1 user=2: Login successful {"user_id":2,"role":"consultant"}
+[2026-04-21 08:24:13] INFO     ip=::1: Logout {"user_id":2}
