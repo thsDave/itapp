@@ -10,12 +10,14 @@ use app\helpers\Sanitizer;
 use app\models\Collaborator;
 use app\models\Area;
 use app\models\Support;
+use app\models\User;
 
 class CollaboratorController
 {
     private Collaborator $model;
     private Area         $areaModel;
     private Support      $supportModel;
+    private User         $userModel;
 
     private const COUNTRIES = [
         'México',
@@ -26,7 +28,6 @@ class CollaboratorController
         'República Dominicana', 'Uruguay', 'Venezuela', 'Otro',
     ];
 
-    // Words shown to the user as the required confirmation
     private const DELETE_WORDS = [
         'BORRAR', 'ELIMINAR', 'CONFIRMAR', 'SUPRIMIR', 'ACEPTAR', 'PROCEDER',
     ];
@@ -36,6 +37,7 @@ class CollaboratorController
         $this->model        = new Collaborator();
         $this->areaModel    = new Area();
         $this->supportModel = new Support();
+        $this->userModel    = new User();
     }
 
     // ── GET /collaborators ────────────────────────────────────────────
@@ -43,8 +45,6 @@ class CollaboratorController
     {
         $collaborators = $this->model->allWithStatus();
 
-        // Generate one signed token per row so each delete button
-        // carries its own challenge word
         $deleteTokens = [];
         foreach ($collaborators as $c) {
             $deleteTokens[(int) $c['id']] = $this->generateDeleteToken();
@@ -86,17 +86,36 @@ class CollaboratorController
     public function store(): void
     {
         $data   = $this->sanitize($_POST);
-        $errors = $this->validate($data);
+        $errors = $this->validate($data, isCreate: true);
 
         if (!empty($errors)) {
             Session::flash('errors', $errors);
-            Session::flash('old', $_POST);
+            // Never repopulate the password field — strip it before flashing
+            Session::flash('old', array_diff_key($_POST, ['password' => '']));
             Redirect::to('/collaborators/create');
         }
 
-        $this->model->insert($this->buildFields($data) + ['idstatus' => \app\models\Collaborator::STATUS_ACTIVE]);
+        try {
+            $this->model->createWithUser(
+                $this->buildFields($data) + ['idstatus' => Collaborator::STATUS_ACTIVE],
+                $data['email'],
+                $data['password']
+            );
+        } catch (\PDOException $e) {
+            // Duplicate email at DB level (race condition after the emailExists check)
+            $isDuplicate = str_contains($e->getMessage(), '1062')
+                        || $e->getCode() == 23000;
 
-        Session::flash('notice', 'Colaborador registrado correctamente.');
+            Session::flash('errors', [
+                $isDuplicate
+                    ? 'El correo electrónico ya está registrado en el sistema.'
+                    : 'Error al guardar los datos. Por favor, inténtalo de nuevo.',
+            ]);
+            Session::flash('old', array_diff_key($_POST, ['password' => '']));
+            Redirect::to('/collaborators/create');
+        }
+
+        Session::flash('notice', 'Colaborador y usuario creados correctamente.');
         Redirect::to('/collaborators');
     }
 
@@ -121,7 +140,7 @@ class CollaboratorController
         $this->findOrAbort((int) $id);
 
         $data   = $this->sanitize($_POST);
-        $errors = $this->validate($data);
+        $errors = $this->validate($data, isCreate: false);
 
         if (!empty($errors)) {
             Session::flash('errors', $errors);
@@ -140,7 +159,6 @@ class CollaboratorController
     {
         $this->findOrAbort((int) $id);
 
-        // ── Backend word confirmation ─────────────────────────────────
         $submittedWord = strtoupper(trim($_POST['_confirm_word']  ?? ''));
         $token         = trim($_POST['_confirm_token'] ?? '');
         $from          = $_POST['_from'] ?? 'list';
@@ -172,28 +190,16 @@ class CollaboratorController
         return $row;
     }
 
-    /**
-     * Generates a random confirmation word and returns both the word (shown
-     * to the user) and a signed token (embedded as a hidden form field).
-     * The signature uses the session ID so it cannot be forged across sessions.
-     *
-     * @return array{word: string, token: string}
-     */
     private function generateDeleteToken(): array
     {
-        $word  = self::DELETE_WORDS[array_rand(self::DELETE_WORDS)];
-        $sig   = hash_hmac('sha256', $word, session_id() . APP_URL);
+        $word = self::DELETE_WORDS[array_rand(self::DELETE_WORDS)];
+        $sig  = hash_hmac('sha256', $word, session_id() . APP_URL);
         return [
             'word'  => $word,
             'token' => base64_encode($word . '|' . $sig),
         ];
     }
 
-    /**
-     * Validates the user-typed word against the signed token generated at
-     * page render time. Returns false if the token is tampered or the word
-     * does not match exactly.
-     */
     private function validateDeleteToken(string $submittedWord, string $token): bool
     {
         if ($submittedWord === '' || $token === '') {
@@ -228,10 +234,12 @@ class CollaboratorController
             'entry_date'         => Sanitizer::date($post['entry_date']           ?? ''),
             'exit_date'          => Sanitizer::date($post['exit_date']            ?? ''),
             'assigned_equipment' => Sanitizer::text($post['assigned_equipment']   ?? ''),
+            'email'              => Sanitizer::email($post['email']               ?? ''),
+            'password'           => $post['password'] ?? '',
         ];
     }
 
-    private function validate(array $data): array
+    private function validate(array $data, bool $isCreate): array
     {
         $errors = [];
 
@@ -261,6 +269,23 @@ class CollaboratorController
             }
         }
 
+        // Credentials — only required and validated on creation
+        if ($isCreate) {
+            if ($data['email'] === '') {
+                $errors[] = 'El correo institucional es requerido.';
+            } elseif (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+                $errors[] = 'El correo institucional no tiene un formato válido.';
+            } elseif ($this->userModel->emailExists($data['email'])) {
+                $errors[] = 'El correo institucional ya está registrado en el sistema.';
+            }
+
+            if ($data['password'] === '') {
+                $errors[] = 'La contraseña es requerida.';
+            } elseif (strlen($data['password']) < 8) {
+                $errors[] = 'La contraseña debe tener al menos 8 caracteres.';
+            }
+        }
+
         return $errors;
     }
 
@@ -269,8 +294,8 @@ class CollaboratorController
         return [
             'name'               => $data['name'],
             'position'           => $data['position'],
-            'country'            => $data['country']  ?: null,
-            'area_id'            => $data['area_id']  ?: null,
+            'country'            => $data['country']            ?: null,
+            'area_id'            => $data['area_id']            ?: null,
             'entry_date'         => $data['entry_date'],
             'exit_date'          => $data['exit_date']          ?: null,
             'assigned_equipment' => $data['assigned_equipment'] ?: null,

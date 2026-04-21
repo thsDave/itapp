@@ -7,14 +7,13 @@ class Collaborator extends Model
 {
     protected string $table = 'collaborators';
 
-    // idstatus constants — mirrors the status seed rows.
     public const STATUS_ACTIVE  = 1;
     public const STATUS_DELETED = 3;
 
     /** All non-deleted collaborators ordered by the given column (used by dropdowns). */
     public function all(string $orderBy = 'created_at', string $dir = 'DESC'): array
     {
-        $dir = strtoupper($dir) === 'ASC' ? 'ASC' : 'DESC';
+        $dir  = strtoupper($dir) === 'ASC' ? 'ASC' : 'DESC';
         $stmt = $this->db->query(
             "SELECT * FROM collaborators
              WHERE idstatus != " . self::STATUS_DELETED . "
@@ -38,13 +37,19 @@ class Collaborator extends Model
         return $stmt->fetchAll();
     }
 
-    /** Single non-deleted collaborator row with area name (for show/edit pages). */
+    /**
+     * Single non-deleted collaborator with area name and linked user info.
+     * Returns false for soft-deleted or missing rows.
+     */
     public function findWithArea(int $id): array|false
     {
         $stmt = $this->db->prepare(
-            "SELECT c.*, a.name AS area_name
+            "SELECT c.*, a.name AS area_name,
+                    u.id    AS linked_user_id,
+                    u.email AS linked_user_email
              FROM collaborators c
              LEFT JOIN areas a ON a.id = c.area_id
+             LEFT JOIN users u ON u.id = c.user_id
              WHERE c.id = ?
                AND c.idstatus != " . self::STATUS_DELETED . "
              LIMIT 1"
@@ -54,8 +59,48 @@ class Collaborator extends Model
     }
 
     /**
-     * Soft delete: sets idstatus=3 (deleted) and records deleted_at timestamp.
-     * The row is kept; supports.collaborator_id FK integrity is preserved.
+     * Create a collaborator and its linked system user atomically.
+     *
+     * The user is created first so its ID is available for the user_id FK.
+     * If either INSERT fails the transaction rolls back and the exception is
+     * re-thrown for the controller to handle.
+     *
+     * @param  array  $collabFields  Fields for collaborators table (must include idstatus)
+     * @param  string $email         Validated, unique email for the new user
+     * @param  string $password      Plain-text password (bcrypt-hashed here, cost 12)
+     * @return int    New collaborator ID
+     * @throws \Throwable            Re-throws on failure after rollback
+     */
+    public function createWithUser(array $collabFields, string $email, string $password): int
+    {
+        $this->db->beginTransaction();
+
+        try {
+            $userModel = new User();
+
+            $userId = $userModel->insert([
+                'name'     => $collabFields['name'],
+                'email'    => $email,
+                'password' => password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]),
+                'role'     => 'user',
+                'idstatus' => User::STATUS_ACTIVE,
+            ]);
+
+            $collabFields['user_id'] = $userId;
+            $collabId = $this->insert($collabFields);
+
+            $this->db->commit();
+            return $collabId;
+
+        } catch (\Throwable $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Soft delete: sets idstatus=3 and records deleted_at.
+     * Row is kept; supports.collaborator_id FK integrity is preserved.
      */
     public function softDelete(int $id): bool
     {
@@ -67,10 +112,7 @@ class Collaborator extends Model
         return $stmt->execute([self::STATUS_DELETED, $id, self::STATUS_DELETED]);
     }
 
-    /**
-     * True when the collaborator is referenced by at least one support ticket.
-     * Kept for informational use (e.g. display warnings).
-     */
+    /** True when the collaborator is referenced by at least one support ticket. */
     public function hasSupports(int $id): bool
     {
         $stmt = $this->db->prepare(

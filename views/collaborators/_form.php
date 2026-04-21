@@ -123,6 +123,68 @@ $val = fn(string $key, string $fallback = '') =>
   <small class="form-text text-muted">Lista el equipo separado por comas.</small>
 </div>
 
+<?php if (!($isEdit ?? false)): ?>
+<!-- ── System access credentials (create only) ────────────────── -->
+<hr class="my-3">
+<h6 class="font-weight-bold text-secondary mb-3">
+  <i class="fas fa-key mr-1"></i>Acceso al sistema
+  <small class="font-weight-normal text-muted ml-2">
+    Se creará un usuario con rol <em>usuario</em> automáticamente.
+  </small>
+</h6>
+
+<div class="row">
+
+  <!-- Institutional email -->
+  <div class="col-md-6">
+    <div class="form-group">
+      <label for="collab_email">
+        Correo institucional <span class="text-danger">*</span>
+      </label>
+      <input type="email" id="collab_email" name="email" class="form-control"
+             value="<?= htmlspecialchars($old['email'] ?? '') ?>"
+             maxlength="150" required placeholder="usuario@empresa.com">
+      <small class="form-text text-muted">
+        Se usará como credencial de inicio de sesión.
+      </small>
+    </div>
+  </div>
+
+  <!-- Password -->
+  <div class="col-md-6">
+    <div class="form-group">
+      <label for="collab_password">
+        Contraseña <span class="text-danger">*</span>
+      </label>
+      <div class="input-group">
+        <input type="password" id="collab_password" name="password"
+               class="form-control"
+               minlength="8" maxlength="72" required
+               placeholder="Mínimo 8 caracteres"
+               autocomplete="new-password">
+        <div class="input-group-append">
+          <span class="input-group-text" id="toggleCollabPwd"
+                style="cursor:pointer" title="Mostrar / ocultar">
+            <i class="fas fa-eye" id="eyeIconCollab"></i>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.row -->
+
+<script>
+  document.getElementById('toggleCollabPwd').addEventListener('click', function () {
+    const input = document.getElementById('collab_password');
+    const icon  = document.getElementById('eyeIconCollab');
+    input.type  = input.type === 'password' ? 'text' : 'password';
+    icon.classList.toggle('fa-eye');
+    icon.classList.toggle('fa-eye-slash');
+  });
+</script>
+<?php endif; ?>
+
 <script>
   (function () {
     const entry = document.getElementById('entry_date');

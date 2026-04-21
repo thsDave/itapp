@@ -27,7 +27,7 @@ $fmt = fn(?string $d): string => $d ? date('d/m/Y', strtotime($d)) : '—';
 
   <!-- ── Info card ─────────────────────────────────────────────────── -->
   <div class="col-lg-4">
-    <div class="card card-primary card-outline" style="height: 96% !important;">
+    <div class="card card-primary card-outline">
       <div class="card-body text-center pt-4 pb-3">
 
         <div class="mb-3">
@@ -62,6 +62,31 @@ $fmt = fn(?string $d): string => $d ? date('d/m/Y', strtotime($d)) : '—';
         <a href="<?= APP_URL ?>/collaborators" class="btn btn-sm btn-secondary">
           <i class="fas fa-arrow-left mr-1"></i> Volver
         </a>
+      </div>
+    </div>
+
+    <!-- ── Linked user card ──────────────────────────────────────── -->
+    <div class="card card-outline card-secondary">
+      <div class="card-header">
+        <h3 class="card-title">
+          <i class="fas fa-user-shield mr-2"></i>Usuario del sistema
+        </h3>
+      </div>
+      <div class="card-body py-2 px-3">
+        <?php if (!empty($collaborator['linked_user_email'])): ?>
+          <p class="mb-1">
+            <small class="text-muted d-block">Correo de acceso</small>
+            <strong><?= htmlspecialchars($collaborator['linked_user_email']) ?></strong>
+          </p>
+          <p class="mb-0">
+            <span class="badge badge-info">rol: usuario</span>
+          </p>
+        <?php else: ?>
+          <p class="text-muted mb-0 small">
+            <i class="fas fa-info-circle mr-1"></i>
+            Este colaborador no tiene usuario vinculado.
+          </p>
+        <?php endif; ?>
       </div>
     </div>
   </div>
@@ -228,7 +253,8 @@ $fmt = fn(?string $d): string => $d ? date('d/m/Y', strtotime($d)) : '—';
       </div>
       <div class="card-body d-flex align-items-center justify-content-between flex-wrap gap-2">
         <p class="mb-0 text-muted">
-          Eliminar este colaborador lo marcará como eliminado y dejará de aparecer en los listados. Sus tickets de soporte se conservan intactos.
+          Eliminar este colaborador lo marcará como eliminado y dejará de aparecer en los listados.
+          Sus tickets de soporte se conservan intactos.
         </p>
         <form method="POST"
               action="<?= APP_URL ?>/collaborators/<?= $collaborator['id'] ?>/delete"
@@ -275,8 +301,8 @@ $(function () {
     }).then(r => {
       if (r.isConfirmed) {
         $form.find('input[name="_confirm_word"]').val(r.value.trim().toUpperCase());
-        $form.off('submit');   // remove listener so native submit doesn't re-trigger it
-        $form[0].submit();     // call native HTMLFormElement.submit() directly
+        $form.off('submit');
+        $form[0].submit();
       }
     });
   });

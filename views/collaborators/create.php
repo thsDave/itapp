@@ -40,11 +40,17 @@
     const position  = document.getElementById('position').value.trim();
     const entryDate = document.getElementById('entry_date').value;
     const exitDate  = document.getElementById('exit_date').value;
+    const email     = document.getElementById('collab_email').value.trim();
+    const password  = document.getElementById('collab_password').value;
+    const emailRe   = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     const msgs = [];
 
-    if (!name)      msgs.push('El nombre es requerido.');
-    if (!position)  msgs.push('El puesto es requerido.');
-    if (!entryDate) msgs.push('La fecha de ingreso es requerida.');
+    if (!name)                   msgs.push('El nombre es requerido.');
+    if (!position)               msgs.push('El puesto es requerido.');
+    if (!entryDate)              msgs.push('La fecha de ingreso es requerida.');
+    if (!emailRe.test(email))    msgs.push('Ingresa un correo institucional válido.');
+    if (password.length < 8)     msgs.push('La contraseña debe tener al menos 8 caracteres.');
 
     if (exitDate && entryDate && exitDate < entryDate) {
       msgs.push('La fecha de egreso no puede ser anterior a la de ingreso.');
@@ -53,9 +59,9 @@
     if (msgs.length) {
       e.preventDefault();
       Swal.fire({
-        icon:  'warning',
-        title: 'Formulario incompleto',
-        html:  msgs.map(m => `• ${m}`).join('<br>'),
+        icon:               'warning',
+        title:              'Formulario incompleto',
+        html:               msgs.map(m => `• ${m}`).join('<br>'),
         confirmButtonColor: '#3085d6',
       });
     }
