@@ -9,19 +9,25 @@ use app\helpers\Redirect;
 use app\helpers\Sanitizer;
 use app\models\User;
 use app\models\Status;
+use app\models\Role;
 
 class UserController
 {
-    private const ROLES         = ['admin', 'consultant', 'user'];
     private const VALID_STATUSES = [User::STATUS_ACTIVE, User::STATUS_INACTIVE];
 
     private User   $model;
     private Status $statusModel;
+    private Role   $roleModel;
+
+    /** Available role names fetched once per request from the DB. */
+    private array $availableRoles;
 
     public function __construct()
     {
-        $this->model       = new User();
-        $this->statusModel = new Status();
+        $this->model          = new User();
+        $this->statusModel    = new Status();
+        $this->roleModel      = new Role();
+        $this->availableRoles = $this->roleModel->getRoleNames();
     }
 
     // ── GET /users ────────────────────────────────────────────────────
@@ -38,7 +44,7 @@ class UserController
     {
         View::render('users/create', [
             'pageTitle' => 'Nuevo usuario',
-            'roles'     => self::ROLES,
+            'roles'     => $this->availableRoles,
             'statuses'  => $this->statusModel->forUsers(),
             'old'       => Session::flash('old') ?? [],
             'errors'    => Session::flash('errors') ?? [],
@@ -77,7 +83,7 @@ class UserController
         View::render('users/edit', [
             'pageTitle' => 'Editar usuario',
             'user'      => $user,
-            'roles'     => self::ROLES,
+            'roles'     => $this->availableRoles,
             'statuses'  => $this->statusModel->forUsers(),
             'old'       => Session::flash('old') ?? [],
             'errors'    => Session::flash('errors') ?? [],
@@ -173,10 +179,10 @@ class UserController
     {
         return [
             'name'     => Sanitizer::string($post['name']     ?? ''),
-            'email'    => Sanitizer::email($post['email']     ?? ''),
+            'email'    => Sanitizer::email($post['email']      ?? ''),
             'password' => $post['password'] ?? '',
-            'role'     => Sanitizer::enum($post['role'] ?? '', self::ROLES),
-            'idstatus' => Sanitizer::int($post['idstatus']    ?? 0),
+            'role'     => Sanitizer::enum($post['role'] ?? '', $this->availableRoles),
+            'idstatus' => Sanitizer::int($post['idstatus']     ?? 0),
         ];
     }
 
@@ -208,7 +214,7 @@ class UserController
             $errors[] = 'La nueva contraseña debe tener al menos 6 caracteres.';
         }
 
-        if (!in_array($data['role'], self::ROLES, true)) {
+        if (!in_array($data['role'], $this->availableRoles, true)) {
             $errors[] = 'El rol seleccionado no es válido.';
         }
 

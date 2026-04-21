@@ -6,109 +6,101 @@ namespace app\helpers;
 /**
  * Central authority for role permissions.
  *
- * Each role lists the route "areas" it may access.
- * Admin uses the '*' wildcard — it never needs to be listed explicitly.
+ * Module access is now stored in the database (role_module_access table).
+ * A per-request static cache avoids redundant queries on the same request.
+ *
+ * The 'admin' role always bypasses every check — it is never queried against
+ * role_module_access and always receives all navigation items.
  */
 class Auth
 {
-    private const PERMISSIONS = [
-        'admin'      => ['*'],
-        'consultant' => ['dashboard', 'profile', 'collaborators', 'supports'],
-        'user'       => ['profile'],
-    ];
+    public const ADMIN_ROLE = 'admin';
 
-    /**
-     * Where each role lands right after a successful login.
-     */
-    private const HOME = [
-        'admin'      => '/dashboard',
-        'consultant' => '/dashboard',
-        'user'       => '/profile',
-    ];
+    /** Per-request module key cache, keyed by role name. */
+    private static array $moduleCache = [];
 
-    /**
-     * Sidebar navigation items.
-     * 'roles' lists every role that can see the link.
-     */
-    public const NAV = [
-        [
-            'label' => 'Dashboard',
-            'icon'  => 'fas fa-tachometer-alt',
-            'url'   => '/dashboard',
-            'match' => 'dashboard',
-            'roles' => ['admin', 'consultant'],
-        ],
-        [
-            'label' => 'Colaboradores',
-            'icon'  => 'fas fa-users',
-            'url'   => '/collaborators',
-            'match' => 'collaborators',
-            'roles' => ['admin', 'consultant'],
-        ],
-        [
-            'label' => 'Soportes',
-            'icon'  => 'fas fa-headset',
-            'url'   => '/supports',
-            'match' => 'supports',
-            'roles' => ['admin', 'consultant'],
-        ],
-        [
-            'label' => 'Usuarios',
-            'icon'  => 'fas fa-user-cog',
-            'url'   => '/users',
-            'match' => 'users',
-            'roles' => ['admin'],
-        ],
-        [
-            'label' => 'Áreas',
-            'icon'  => 'fas fa-sitemap',
-            'url'   => '/areas',
-            'match' => 'areas',
-            'roles' => ['admin'],
-        ],
-        [
-            'label' => 'Mi Perfil',
-            'icon'  => 'fas fa-user-circle',
-            'url'   => '/profile',
-            'match' => 'profile',
-            'roles' => ['admin', 'consultant', 'user'],
-        ],
-    ];
+    /** Per-request nav item cache, keyed by role name. */
+    private static array $navCache = [];
 
     // ── Public API ────────────────────────────────────────────────────
 
     /**
-     * Check whether $role is allowed to access $area.
+     * Check whether $role is allowed to access $moduleKey.
      * Admin bypasses every check.
      */
-    public static function roleCanAccess(string $role, string $area): bool
+    public static function roleCanAccess(string $role, string $moduleKey): bool
     {
-        $perms = self::PERMISSIONS[$role] ?? [];
-
-        if (in_array('*', $perms, true)) {
+        if ($role === self::ADMIN_ROLE) {
             return true;
         }
 
-        return in_array($area, $perms, true);
+        return in_array($moduleKey, self::getModuleKeys($role), true);
     }
 
     /**
-     * Return the home URL for the given role.
+     * Return the post-login redirect URL for the given role.
      */
     public static function homeFor(string $role): string
     {
-        return self::HOME[$role] ?? '/profile';
+        if ($role === self::ADMIN_ROLE) {
+            return '/dashboard';
+        }
+
+        $keys = self::getModuleKeys($role);
+
+        if (in_array('dashboard', $keys, true)) {
+            return '/dashboard';
+        }
+
+        return '/profile';
     }
 
     /**
-     * Return the nav items visible to the given role.
+     * Return the sidebar nav items visible to the given role.
+     * Each item: ['label', 'icon', 'url', 'match']
      */
     public static function navFor(string $role): array
     {
-        return array_values(array_filter(
-            self::NAV,
-            fn(array $item) => in_array($role, $item['roles'], true)
-        ));
+        if (isset(self::$navCache[$role])) {
+            return self::$navCache[$role];
+        }
+
+        try {
+            $db = \DB::connect();
+
+            if ($role === self::ADMIN_ROLE) {
+                $stmt = $db->query(
+                    "SELECT module_key, module_name, icon, route_prefix
+                     FROM modules
+                     ORDER BY sort_order"
+                );
+                $rows = $stmt->fetchAll();
+            } else {
+                $stmt = $db->prepare(
+                    "SELECT m.module_key, m.module_name, m.icon, m.route_prefix
+                     FROM role_module_access rma
+                     JOIN roles   r ON r.idrole   = rma.idrole
+                     JOIN modules m ON m.idmodule = rma.idmodule
+                     WHERE r.role_name = ?
+                     ORDER BY m.sort_order"
+                );
+                $stmt->execute([$role]);
+                $rows = $stmt->fetchAll();
+            }
+
+            $items = array_map(fn(array $m) => [
+                'label' => $m['module_name'],
+                'icon'  => $m['icon'],
+                'url'   => $m['route_prefix'],
+                'match' => $m['module_key'],
+            ], $rows);
+
+        } catch (\Throwable) {
+            $items = [];
+        }
+
+        self::$navCache[$role] = $items;
+        return $items;
     }
 
     /**
@@ -128,5 +120,34 @@ class Auth
     {
         $roles = (array) $roles;
         return in_array(self::role(), $roles, true);
+    }
+
+    // ── Private ───────────────────────────────────────────────────────
+
+    /**
+     * Fetch (and cache per request) the module keys accessible to $role.
+     */
+    private static function getModuleKeys(string $role): array
+    {
+        if (isset(self::$moduleCache[$role])) {
+            return self::$moduleCache[$role];
+        }
+
+        try {
+            $stmt = \DB::connect()->prepare(
+                "SELECT m.module_key
+                 FROM role_module_access rma
+                 JOIN roles   r ON r.idrole   = rma.idrole
+                 JOIN modules m ON m.idmodule = rma.idmodule
+                 WHERE r.role_name = ?
+                 ORDER BY m.sort_order"
+            );
+            $stmt->execute([$role]);
+            self::$moduleCache[$role] = array_column($stmt->fetchAll(), 'module_key');
+        } catch (\Throwable) {
+            self::$moduleCache[$role] = [];
+        }
+
+        return self::$moduleCache[$role];
     }
 }
